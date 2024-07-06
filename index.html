@@ -3,80 +3,379 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Allan Fox - Homepage</title>
+    <title>Cyberpunk Portfolio</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: black;
+        @import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;700&display=swap');
+        body { margin: 0; overflow: hidden; background-color: black; }
+        canvas { display: block; }
+        .label {
             color: white;
-        }
-        header {
-            display: flex;
-            justify-content: space-between;
-            padding: 20px;
-        }
-        nav a {
-            color: white;
-            text-decoration: none;
-            margin-left: 20px;
-        }
-        main {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 50px;
-        }
-        h1 {
-            font-size: 8vw;
-            margin: 0;
-        }
-        .services {
-            text-align: right;
-        }
-        .profile-pic {
-            width: 300px;
-            height: 300px;
-            background-color: #444;
-            border-radius: 50%;
-        }
-        .avatar {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 80px;
-            height: 80px;
-            background-color: #f0f0f0;
-            border-radius: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 40px;
+            font-family: 'Nunito Sans', sans-serif;
+            font-size: 18px;
+            position: absolute;
+            background: rgba(0,0,0,0.5);
+            padding: 5px;
+            border-radius: 5px;
+            pointer-events: none;
         }
     </style>
 </head>
 <body>
-    <header>
-        <div></div>
-        <nav>
-            <a href="about.html">ABOUT</a>
-            <a href="services.html">SERVICES</a>
-            <a href="work.html">WORK</a>
-            <a href="contact.html">CONTACT</a>
-        </nav>
-    </header>
-    <main>
-        <h1>ALLAN FOX</h1>
-        <div class="profile-pic"></div>
-    </main>
-    <div class="services">
-        <p>DIGITAL</p>
-        <p>INTERACTIVE</p>
-        <p>PRINT</p>
-        <p>BRAND</p>
-        <p>VIDEO + MOTION</p>
-    </div>
-    <div class="avatar">👋</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+    <script>
+        let scene, camera, renderer, particles;
+        let mouseX = 0, mouseY = 0;
+        let targetX = 0, targetY = 0;
+        let velocities, originalPositions;
+        let sections = [];
+        let raycaster, mouse;
+        let currentZoom = null;
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            // Create gradient background
+            const gradientGeometry = new THREE.PlaneGeometry(2, 2);
+            const gradientMaterial = new THREE.ShaderMaterial({
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vec3 topColor = vec3(0.1, 0.0, 0.3);
+                        vec3 bottomColor = vec3(0.0, 0.05, 0.2);
+                        vec3 color = mix(bottomColor, topColor, vUv.y);
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `,
+                depthWrite: false
+            });
+            const gradientMesh = new THREE.Mesh(gradientGeometry, gradientMaterial);
+            gradientMesh.position.z = -10;
+            scene.add(gradientMesh);
+
+            // Generate the particle system
+            const particleCount = 20000;
+            const positions = new Float32Array(particleCount * 3);
+            const colors = new Float32Array(particleCount * 3);
+            const sizes = new Float32Array(particleCount);
+            velocities = new Float32Array(particleCount * 3);
+            originalPositions = new Float32Array(particleCount * 3);
+
+            for (let i = 0; i < particleCount; i++) {
+                const x = (Math.random() - 0.5) * 20;
+                const y = (Math.random() - 0.5) * 20;
+                const z = (Math.random() - 0.5) * 20;
+                
+                positions[i * 3] = x;
+                positions[i * 3 + 1] = y;
+                positions[i * 3 + 2] = z;
+
+                originalPositions[i * 3] = x;
+                originalPositions[i * 3 + 1] = y;
+                originalPositions[i * 3 + 2] = z;
+
+                colors[i * 3] = Math.random() * 0.5 + 0.5;
+                colors[i * 3 + 1] = Math.random() * 0.5 + 0.5;
+                colors[i * 3 + 2] = Math.random() * 0.5 + 0.5;
+
+                sizes[i] = Math.random() * 0.1 + 0.04;
+
+                velocities[i * 3] = 0;
+                velocities[i * 3 + 1] = 0;
+                velocities[i * 3 + 2] = 0;
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+            const particleMaterial = new THREE.ShaderMaterial({
+                vertexShader: `
+                    attribute float size;
+                    attribute vec3 color;
+                    varying vec3 vColor;
+                    void main() {
+                        vColor = color;
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = size * (300.0 / -mvPosition.z);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    varying vec3 vColor;
+                    void main() {
+                        vec2 center = gl_PointCoord - 0.5;
+                        float dist = length(center);
+                        float alpha = smoothstep(0.5, 0.2, dist);
+                        vec3 glow = vColor * (1.0 - dist * 2.0);
+                        gl_FragColor = vec4(glow, alpha);
+                    }
+                `,
+                blending: THREE.AdditiveBlending,
+                depthTest: false,
+                transparent: true,
+            });
+
+            particles = new THREE.Points(geometry, particleMaterial);
+            scene.add(particles);
+
+            camera.position.z = 5;
+
+            // Create section objects
+            createSection('MUSIC', 0xff0000, new THREE.SphereGeometry(0.5, 32, 32), 3, 2, -2);
+            createSection('ART / ANIMATION', 0x00ff00, new THREE.BoxGeometry(1, 1, 1), -3, 2, -2);
+            createSection('CODE', 0x0000ff, new THREE.ConeGeometry(0.5, 1, 32), 3, -2, -2);
+            createSection('BIO', 0xffff00, new THREE.TorusGeometry(0.3, 0.2, 16, 100), -3, -2, -2);
+        }
+
+        function createSection(title, color, geometry, x, y, z) {
+            const material = new THREE.MeshBasicMaterial({ color: color, wireframe: true });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(x, y, z);
+            scene.add(mesh);
+
+            // Create screen (16:9 aspect ratio)
+            const screenWidth = 1.6;
+            const screenHeight = 0.9;
+            const screenGeometry = new THREE.PlaneGeometry(screenWidth, screenHeight);
+            const screenMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0x000000, 
+                transparent: true, 
+                opacity: 0.8 
+            });
+            const screen = new THREE.Mesh(screenGeometry, screenMaterial);
+            screen.position.set(0, 0, 0.5);
+            screen.scale.set(0.001, 0.001, 0.001); // Start with a tiny scale
+            mesh.add(screen);
+
+            // Create title bar
+            const titleBarHeight = screenHeight * 0.1;
+            const titleBarGeometry = new THREE.PlaneGeometry(screenWidth, titleBarHeight);
+            const titleBarMaterial = new THREE.MeshBasicMaterial({ color: color });
+            const titleBar = new THREE.Mesh(titleBarGeometry, titleBarMaterial);
+            titleBar.position.set(0, screenHeight / 2 - titleBarHeight / 2, 0.01);
+            screen.add(titleBar);
+
+            // Create title text
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 512;
+            canvas.height = 64;
+            context.font = 'Bold 32px Nunito Sans';
+            context.fillStyle = 'white';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(title, canvas.width / 2, canvas.height / 2);
+            const titleTexture = new THREE.CanvasTexture(canvas);
+            const titleGeometry = new THREE.PlaneGeometry(screenWidth * 0.9, titleBarHeight * 0.8);
+            const titleMaterial = new THREE.MeshBasicMaterial({ 
+                map: titleTexture, 
+                transparent: true 
+            });
+            const titleMesh = new THREE.Mesh(titleGeometry, titleMaterial);
+            titleMesh.position.set(0, 0, 0.01);
+            titleBar.add(titleMesh);
+
+            sections.push({ 
+                mesh: mesh, 
+                title: title, 
+                originalPosition: mesh.position.clone(),
+                screen: screen
+            });
+
+            const label = document.createElement('div');
+            label.className = 'label';
+            label.textContent = title;
+            label.style.display = 'none';
+            document.body.appendChild(label);
+            mesh.userData.label = label;
+        }
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+
+            TWEEN.update(time);
+
+            // Rotate sections
+            sections.forEach(section => {
+                if (!section.mesh.userData.isZoomed) {
+                    section.mesh.rotation.x += 0.01;
+                    section.mesh.rotation.y += 0.01;
+                }
+            });
+
+            // Smooth mouse movement
+            mouseX += (targetX - mouseX) * 0.02;
+            mouseY += (targetY - mouseY) * 0.02;
+
+            const positions = particles.geometry.attributes.position.array;
+
+            for (let i = 0; i < positions.length; i += 3) {
+                const x = positions[i];
+                const y = positions[i + 1];
+                const z = positions[i + 2];
+
+                const dx = x - mouseX * 10;
+                const dy = y - mouseY * 10;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < 2.5) {
+                    const angle = Math.atan2(dy, dx);
+                    const force = (1 - dist / 2.5) * 0.03;
+
+                    velocities[i] += Math.cos(angle) * force;
+                    velocities[i + 1] += Math.sin(angle) * force;
+                }
+
+                // Apply velocity with stronger damping
+                positions[i] += velocities[i];
+                positions[i + 1] += velocities[i + 1];
+                positions[i + 2] += velocities[i + 2];
+
+                velocities[i] *= 0.9;
+                velocities[i + 1] *= 0.9;
+                velocities[i + 2] *= 0.9;
+
+                // Gently return to original position
+                const originX = originalPositions[i];
+                const originY = originalPositions[i + 1];
+                const originZ = originalPositions[i + 2];
+
+                positions[i] += (originX - positions[i]) * 0.005;
+                positions[i + 1] += (originY - positions[i + 1]) * 0.005;
+                positions[i + 2] += (originZ - positions[i + 2]) * 0.005;
+
+                // Soft wrapping
+                if (Math.abs(positions[i] - originX) > 5) positions[i] = originX;
+                if (Math.abs(positions[i + 1] - originY) > 5) positions[i + 1] = originY;
+                if (Math.abs(positions[i + 2] - originZ) > 5) positions[i + 2] = originZ;
+            }
+
+            particles.geometry.attributes.position.needsUpdate = true;
+
+            // Update labels
+            sections.forEach(section => {
+                const screenPosition = section.mesh.position.clone().project(camera);
+                section.mesh.userData.label.style.left = (screenPosition.x + 1) * window.innerWidth / 2 + 'px';
+                section.mesh.userData.label.style.top = (-screenPosition.y + 1) * window.innerHeight / 2 + 'px';
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        function onMouseMove(event) {
+            targetX = (event.clientX / window.innerWidth) * 2 - 1;
+            targetY = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+
+            const intersects = raycaster.intersectObjects(sections.map(s => s.mesh));
+
+            sections.forEach(section => {
+                if (intersects.length > 0 && intersects[0].object === section.mesh) {
+                    section.mesh.userData.label.style.display = 'block';
+                } else {
+                    section.mesh.userData.label.style.display = 'none';
+                }
+            });
+        }
+
+        function onClick(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+
+            const intersects = raycaster.intersectObjects(sections.map(s => s.mesh));
+
+            if (intersects.length > 0) {
+                const clickedMesh = intersects[0].object;
+                zoomToObject(clickedMesh);
+            } else if (currentZoom) {
+                zoomOut();
+            }
+        }
+
+        function zoomToObject(object) {
+            if (currentZoom === object) return;
+            
+            currentZoom = object;
+            object.userData.isZoomed = true;
+
+            new TWEEN.Tween(camera.position)
+                .to({ x: object.position.x, y: object.position.y, z: object.position.z + 2 }, 1000)
+                .easing(TWEEN.Easing.Cubic.Out)
+                .start();
+
+                new TWEEN.Tween(object.rotation)
+                .to({ x: 0, y: 0, z: 0 }, 1000)
+                .easing(TWEEN.Easing.Cubic.Out)
+                .start();
+
+            // Grow the screen
+            const screen = sections.find(s => s.mesh === object).screen;
+            new TWEEN.Tween(screen.scale)
+                .to({ x: 1, y: 1, z: 1 }, 1000)
+                .easing(TWEEN.Easing.Elastic.Out)
+                .start();
+        }
+
+        function zoomOut() {
+            if (currentZoom) {
+                currentZoom.userData.isZoomed = false;
+
+                new TWEEN.Tween(camera.position)
+                    .to({ x: 0, y: 0, z: 5 }, 1000)
+                    .easing(TWEEN.Easing.Cubic.Out)
+                    .start();
+
+                sections.forEach(section => {
+                    new TWEEN.Tween(section.mesh.position)
+                        .to(section.originalPosition, 1000)
+                        .easing(TWEEN.Easing.Cubic.Out)
+                        .start();
+
+                    // Shrink the screen
+                    new TWEEN.Tween(section.screen.scale)
+                        .to({ x: 0.001, y: 0.001, z: 0.001 }, 1000)
+                        .easing(TWEEN.Easing.Elastic.In)
+                        .start();
+                });
+
+                currentZoom = null;
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        init();
+        animate();
+
+        window.addEventListener('mousemove', onMouseMove, false);
+        window.addEventListener('click', onClick, false);
+        window.addEventListener('resize', onWindowResize, false);
+    </script>
 </body>
 </html>
